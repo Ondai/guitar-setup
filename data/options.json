@@ -1,0 +1,893 @@
+{
+ "NOT_SURE": "unsure",
+ "INSTRUMENTS": {
+  "electric": {
+   "label": "Electric Guitar",
+   "short": "Electric",
+   "defaultStrings": 6
+  },
+  "acoustic": {
+   "label": "Acoustic Guitar",
+   "short": "Acoustic",
+   "defaultStrings": 6
+  },
+  "bass": {
+   "label": "Electric Bass",
+   "short": "Bass",
+   "defaultStrings": 4
+  }
+ },
+ "OPTIONS": {
+  "strings": {
+   "electric": [
+    [
+     6,
+     "6"
+    ],
+    [
+     7,
+     "7"
+    ],
+    [
+     8,
+     "8"
+    ],
+    [
+     12,
+     "12"
+    ]
+   ],
+   "acoustic": [
+    [
+     6,
+     "6"
+    ],
+    [
+     12,
+     "12"
+    ]
+   ],
+   "bass": [
+    [
+     4,
+     "4"
+    ],
+    [
+     5,
+     "5"
+    ],
+    [
+     6,
+     "6"
+    ]
+   ]
+  },
+  "scale": {
+   "electric": [
+    [
+     "24.75",
+     "24.75\" (Gibson-style)"
+    ],
+    [
+     "25",
+     "25\" (PRS-style)"
+    ],
+    [
+     "25.5",
+     "25.5\" (Fender / Ibanez-style)"
+    ],
+    [
+     "26.5",
+     "26.5\" (7-string / extended)"
+    ],
+    [
+     "27",
+     "27\"+ (baritone)"
+    ],
+    [
+     "multi",
+     "Multi-scale / fanned frets"
+    ],
+    [
+     "unsure",
+     "Not sure"
+    ]
+   ],
+   "acoustic": [
+    [
+     "24.75",
+     "24.75\" (Gibson-style short)"
+    ],
+    [
+     "25.4",
+     "25.4\" (Martin-style)"
+    ],
+    [
+     "25.5",
+     "25.5\" (Taylor-style)"
+    ],
+    [
+     "25.6",
+     "650 mm / 25.6\" (classical)"
+    ],
+    [
+     "unsure",
+     "Not sure"
+    ]
+   ],
+   "bass": [
+    [
+     "30",
+     "30\" (short)"
+    ],
+    [
+     "32",
+     "32\" (medium)"
+    ],
+    [
+     "34",
+     "34\" (long, standard)"
+    ],
+    [
+     "35",
+     "35\" (extra-long)"
+    ],
+    [
+     "multi",
+     "Multi-scale / fanned frets"
+    ],
+    [
+     "unsure",
+     "Not sure"
+    ]
+   ]
+  },
+  "radius": [
+   [
+    "7.25",
+    "7.25\" (vintage)"
+   ],
+   [
+    "9.5",
+    "9.5\""
+   ],
+   [
+    "10",
+    "10\""
+   ],
+   [
+    "12",
+    "12\""
+   ],
+   [
+    "13.8",
+    "13.8\" / 350 mm"
+   ],
+   [
+    "14",
+    "14\""
+   ],
+   [
+    "15.75",
+    "15.75\" / 400 mm"
+   ],
+   [
+    "16",
+    "16\""
+   ],
+   [
+    "16.9",
+    "16.9\" / 430 mm"
+   ],
+   [
+    "20",
+    "20\""
+   ],
+   [
+    "flat",
+    "Flat (classical)"
+   ],
+   [
+    "c-9.5-14",
+    "Compound 9.5\"–14\""
+   ],
+   [
+    "c-10-16",
+    "Compound 10\"–16\""
+   ],
+   [
+    "c-12-16",
+    "Compound 12\"–16\""
+   ],
+   [
+    "unsure",
+    "Not sure"
+   ]
+  ],
+  "fbMaterial": [
+   [
+    "maple",
+    "Maple"
+   ],
+   [
+    "roasted-maple",
+    "Roasted maple"
+   ],
+   [
+    "rosewood",
+    "Rosewood"
+   ],
+   [
+    "ebony",
+    "Ebony"
+   ],
+   [
+    "macassar",
+    "Macassar ebony"
+   ],
+   [
+    "pau-ferro",
+    "Pau ferro"
+   ],
+   [
+    "laurel",
+    "Indian laurel"
+   ],
+   [
+    "jatoba",
+    "Jatoba"
+   ],
+   [
+    "walnut",
+    "Walnut"
+   ],
+   [
+    "ovangkol",
+    "Ovangkol"
+   ],
+   [
+    "richlite",
+    "Richlite / Ebonol / synthetic"
+   ],
+   [
+    "other",
+    "Other wood"
+   ],
+   [
+    "unsure",
+    "Not sure"
+   ]
+  ],
+  "fbFinish": [
+   [
+    "finished",
+    "Finished (clear-coated, looks glossy or satin)"
+   ],
+   [
+    "unfinished",
+    "Unfinished (bare wood)"
+   ],
+   [
+    "unsure",
+    "Not sure"
+   ]
+  ],
+  "fretSize": [
+   [
+    "vintage",
+    "Vintage / small"
+   ],
+   [
+    "medium",
+    "Medium"
+   ],
+   [
+    "medium-jumbo",
+    "Medium jumbo"
+   ],
+   [
+    "narrow-tall",
+    "Narrow tall"
+   ],
+   [
+    "jumbo",
+    "Jumbo"
+   ],
+   [
+    "extra-jumbo",
+    "Extra jumbo"
+   ],
+   [
+    "unsure",
+    "Not sure"
+   ]
+  ],
+  "fretMaterial": [
+   [
+    "nickel",
+    "Nickel-silver (standard)"
+   ],
+   [
+    "stainless",
+    "Stainless steel"
+   ],
+   [
+    "evo",
+    "EVO gold"
+   ],
+   [
+    "unsure",
+    "Not sure"
+   ]
+  ],
+  "nut": [
+   [
+    "bone",
+    "Bone"
+   ],
+   [
+    "synthetic",
+    "Synthetic (Tusq, Graph Tech, Nubone…)"
+   ],
+   [
+    "plastic",
+    "Plastic"
+   ],
+   [
+    "locking",
+    "Locking nut",
+    [
+     "electric",
+     "bass"
+    ]
+   ],
+   [
+    "roller",
+    "Roller nut",
+    [
+     "electric"
+    ]
+   ],
+   [
+    "brass",
+    "Brass"
+   ],
+   [
+    "zero-fret",
+    "Zero fret"
+   ],
+   [
+    "unsure",
+    "Not sure"
+   ]
+  ],
+  "neckJoint": [
+   [
+    "bolt-on",
+    "Bolt-on"
+   ],
+   [
+    "set",
+    "Set (glued)"
+   ],
+   [
+    "through",
+    "Neck-through"
+   ],
+   [
+    "unsure",
+    "Not sure"
+   ]
+  ],
+  "trussAccess": [
+   [
+    "headstock",
+    "At the headstock"
+   ],
+   [
+    "heel",
+    "At the body end (heel)"
+   ],
+   [
+    "spoke",
+    "Spoke wheel at the body end"
+   ],
+   [
+    "soundhole",
+    "Through the soundhole",
+    [
+     "acoustic"
+    ]
+   ],
+   [
+    "none",
+    "No truss rod"
+   ],
+   [
+    "unsure",
+    "Not sure"
+   ]
+  ],
+  "finish": [
+   [
+    "gloss-poly",
+    "Gloss polyurethane / polyester"
+   ],
+   [
+    "satin-poly",
+    "Satin polyurethane"
+   ],
+   [
+    "nitro",
+    "Nitrocellulose (gloss)"
+   ],
+   [
+    "nitro-satin",
+    "Nitro, satin or aged / relic"
+   ],
+   [
+    "oil",
+    "Oil or wax"
+   ],
+   [
+    "unsure",
+    "Not sure"
+   ]
+  ],
+  "style": [
+   [
+    "light",
+    "Light touch, low action preferred"
+   ],
+   [
+    "medium",
+    "Medium, a bit of everything"
+   ],
+   [
+    "heavy",
+    "Heavy picking, big bends or slide"
+   ]
+  ],
+  "climate": [
+   [
+    "big",
+    "Big swings (dry winters, humid summers)"
+   ],
+   [
+    "moderate",
+    "Moderate"
+   ],
+   [
+    "stable",
+    "Stable / climate-controlled"
+   ]
+  ],
+  "yesNo": [
+   [
+    "yes",
+    "Yes"
+   ],
+   [
+    "no",
+    "No"
+   ]
+  ],
+  "bridgeElectric": [
+   [
+    "trem-vintage",
+    "Vintage 6-screw tremolo (Strat-style)"
+   ],
+   [
+    "trem-2point",
+    "Modern 2-point tremolo (e.g. Gotoh 510TS, Fender 2-point)"
+   ],
+   [
+    "trem-locking",
+    "Double-locking tremolo (Floyd Rose, Ibanez Edge…)"
+   ],
+   [
+    "bigsby",
+    "Bigsby vibrato"
+   ],
+   [
+    "tom-stopbar",
+    "Tune-o-matic + stopbar tailpiece"
+   ],
+   [
+    "tom-through",
+    "Tune-o-matic, strings through body"
+   ],
+   [
+    "wraparound",
+    "Wraparound bridge (e.g. Gotoh 510UB)"
+   ],
+   [
+    "hardtail",
+    "Hardtail with individual saddles"
+   ],
+   [
+    "tele-vintage",
+    "Tele-style, 3 barrel saddles"
+   ],
+   [
+    "tele-modern",
+    "Tele-style, 6 saddles"
+   ],
+   [
+    "evertune",
+    "EverTune"
+   ],
+   [
+    "other",
+    "Other"
+   ]
+  ],
+  "tremSetup": [
+   [
+    "floating",
+    "Floating (can pull up and push down)"
+   ],
+   [
+    "decked",
+    "Decked (rests on the body, dive only)"
+   ],
+   [
+    "blocked",
+    "Blocked (doesn't move)"
+   ]
+  ],
+  "pickupsElectric": [
+   [
+    "SSS",
+    "SSS (3 single-coils)"
+   ],
+   [
+    "HSS",
+    "HSS"
+   ],
+   [
+    "HSH",
+    "HSH"
+   ],
+   [
+    "HH",
+    "HH (2 humbuckers)"
+   ],
+   [
+    "H",
+    "H (1 humbucker)"
+   ],
+   [
+    "SS",
+    "SS (Tele-style)"
+   ],
+   [
+    "HS",
+    "HS"
+   ],
+   [
+    "P90",
+    "P-90s"
+   ],
+   [
+    "other",
+    "Other"
+   ]
+  ],
+  "stringType": [
+   [
+    "steel",
+    "Steel strings"
+   ],
+   [
+    "nylon",
+    "Nylon strings (classical / flamenco)"
+   ]
+  ],
+  "top": [
+   [
+    "solid",
+    "Solid top"
+   ],
+   [
+    "laminate",
+    "Laminate top"
+   ],
+   [
+    "all-solid",
+    "All solid wood (top, back, sides)"
+   ],
+   [
+    "unsure",
+    "Not sure"
+   ]
+  ],
+  "bridgeAcoustic": [
+   [
+    "pinned",
+    "Bridge pins"
+   ],
+   [
+    "pinless",
+    "Pinless (strings through the back of the bridge)"
+   ],
+   [
+    "tieblock",
+    "Tie block (classical)"
+   ]
+  ],
+  "saddle": [
+   [
+    "bone",
+    "Bone"
+   ],
+   [
+    "synthetic",
+    "Tusq / Micarta / Nubone"
+   ],
+   [
+    "plastic",
+    "Plastic"
+   ],
+   [
+    "unsure",
+    "Not sure"
+   ]
+  ],
+  "electronicsAcoustic": [
+   [
+    "none",
+    "None"
+   ],
+   [
+    "piezo",
+    "Under-saddle piezo"
+   ],
+   [
+    "magnetic",
+    "Soundhole magnetic pickup"
+   ],
+   [
+    "contact",
+    "Body / contact sensor (e.g. Taylor ES2)"
+   ],
+   [
+    "blend",
+    "Blend system (piezo + mic)"
+   ],
+   [
+    "unsure",
+    "Not sure"
+   ]
+  ],
+  "battery": [
+   [
+    "9v",
+    "9V"
+   ],
+   [
+    "aa",
+    "AA"
+   ],
+   [
+    "cr2032",
+    "Coin cell (CR2032)"
+   ],
+   [
+    "18v",
+    "18V (two 9Vs)"
+   ],
+   [
+    "none",
+    "No battery"
+   ],
+   [
+    "unsure",
+    "Not sure"
+   ]
+  ],
+  "bridgeBass": [
+   [
+    "bass-vintage",
+    "Vintage bent-plate, 4-saddle (classic P/J)"
+   ],
+   [
+    "bass-highmass",
+    "High-mass (Badass, Fender HiMass, Gotoh 201…)"
+   ],
+   [
+    "bass-monorail",
+    "Individual monorail saddles (Hipshot, ETS…)"
+   ],
+   [
+    "bass-tom",
+    "Tune-o-matic style (Gibson / Thunderbird)"
+   ],
+   [
+    "other",
+    "Other"
+   ]
+  ],
+  "stringLoad": [
+   [
+    "top",
+    "Top-load"
+   ],
+   [
+    "through",
+    "Through body"
+   ],
+   [
+    "both",
+    "Either (convertible)"
+   ],
+   [
+    "unsure",
+    "Not sure"
+   ]
+  ],
+  "pickupsBass": [
+   [
+    "P",
+    "P"
+   ],
+   [
+    "J",
+    "J"
+   ],
+   [
+    "PJ",
+    "PJ"
+   ],
+   [
+    "JJ",
+    "JJ"
+   ],
+   [
+    "MM",
+    "MM humbucker"
+   ],
+   [
+    "MMS",
+    "MM + single"
+   ],
+   [
+    "HH",
+    "Soapbar humbuckers"
+   ],
+   [
+    "other",
+    "Other"
+   ]
+  ],
+  "bassStringType": [
+   [
+    "round",
+    "Roundwound"
+   ],
+   [
+    "flat",
+    "Flatwound"
+   ],
+   [
+    "half",
+    "Half-round"
+   ],
+   [
+    "tape",
+    "Tapewound"
+   ],
+   [
+    "unsure",
+    "Not sure"
+   ]
+  ],
+  "fretted": [
+   [
+    "fretted",
+    "Fretted"
+   ],
+   [
+    "fretless",
+    "Fretless"
+   ]
+  ]
+ },
+ "TUNINGS": {
+  "electric": [
+   "E standard",
+   "Eb standard",
+   "Drop D",
+   "D standard",
+   "Drop C",
+   "C standard",
+   "B standard (7-string)",
+   "Drop A (7-string)",
+   "Open G",
+   "Open D",
+   "DADGAD"
+  ],
+  "acoustic": [
+   "E standard",
+   "Eb standard",
+   "Drop D",
+   "DADGAD",
+   "Open G",
+   "Open D",
+   "D standard"
+  ],
+  "bass": [
+   "EADG standard",
+   "BEADG standard (5-string)",
+   "BEADGC (6-string)",
+   "Drop D",
+   "Eb standard",
+   "D standard",
+   "Drop C"
+  ]
+ },
+ "GAUGES": {
+  "electric": [
+   "9-42",
+   "9-46",
+   "10-46",
+   "10-52",
+   "11-48",
+   "11-49",
+   "11-52",
+   "12-52",
+   "10-56 (7-string)",
+   "10-59 (7-string)"
+  ],
+  "acoustic": [
+   "10-47 (extra light)",
+   "11-52 (custom light)",
+   "12-53 (light)",
+   "12-54 (light)",
+   "13-56 (medium)",
+   "Normal tension (nylon)",
+   "Hard tension (nylon)"
+  ],
+  "bass": [
+   "40-95",
+   "45-100",
+   "45-105",
+   "45-130 (5-string)",
+   "50-105",
+   "50-110",
+   "32-130 (6-string)"
+  ]
+ },
+ "BRIDGE_MODELS": [
+  "Gotoh 510TS-FE1",
+  "Gotoh 510TS-SF2",
+  "Gotoh 510UB",
+  "Gotoh GE1996T",
+  "Floyd Rose Original",
+  "Floyd Rose 1000",
+  "Floyd Rose Special",
+  "Ibanez Edge",
+  "Ibanez Lo-Pro Edge",
+  "Ibanez Edge-Zero II",
+  "Ibanez Gibraltar Standard",
+  "Ibanez T106",
+  "Fender 2-Point Synchronized",
+  "Fender Vintage Synchronized",
+  "Wilkinson VS100N",
+  "PRS Gen III",
+  "Gibson ABR-1",
+  "Gibson Nashville",
+  "TonePros AVR II",
+  "Hipshot Fixed",
+  "Bigsby B3",
+  "Bigsby B5",
+  "Bigsby B500",
+  "Kahler 2300",
+  "EverTune F6",
+  "Badass II",
+  "Hipshot A-Style",
+  "Hipshot KickAss",
+  "Gotoh 201",
+  "Fender HiMass"
+ ]
+}
