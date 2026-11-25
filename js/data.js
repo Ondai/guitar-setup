@@ -1,4 +1,4 @@
-// Option lists live in data/options.json so the Python spec lookup uses the exact same values.
+// Option lists live in data/options.json, shared with tools/build_models.py so the model library uses the same values.
 // Every select carries a "Not sure" choice; the guide falls back to general advice for it.
 
 const shared = await (await fetch(new URL('../data/options.json', import.meta.url))).json();
@@ -31,11 +31,12 @@ export const TARGET_OVERRIDES = [
   },
 ];
 
-// Blank spec for each type, used when no preset is chosen.
+// Blank spec for each type, used when no library model is chosen.
 export function blankSpec(type) {
   const common = {
     strings: INSTRUMENTS[type].defaultStrings, scale: NOT_SURE, radius: NOT_SURE, frets: type === 'acoustic' ? 20 : 22,
     fretSize: NOT_SURE, fretMaterial: 'nickel', fbMaterial: NOT_SURE, fbFinish: NOT_SURE, nut: NOT_SURE, neckJoint: NOT_SURE,
+    year: '', scaleCustom: '', scaleMulti: '', radiusCustom: '',
     trussAccess: NOT_SURE, trussTool: '', gauge: '', tuning: TUNINGS[type][0], bodyWood: '', bodyFinish: NOT_SURE, neckFinish: NOT_SURE,
     style: 'medium', climate: 'big', notes: '',
   };
@@ -49,3 +50,33 @@ export function optionLabel(list, value) {
   const hit = list.find(o => String(o[0]) === String(value));
   return hit ? hit[1] : value;
 }
+
+// Parse a typed length into inches: "25", '25"', "25.5 in", "635mm", "635 mm". Bare numbers over 100 are taken as mm.
+export function parseLength(text) {
+  const m = String(text ?? '').trim().toLowerCase().match(/^(\d+(?:[.,]\d+)?)\s*(mm|cm|in|inch|inches|"|”)?$/);
+  if (!m) return null;
+  let n = parseFloat(m[1].replace(',', '.'));
+  const unit = m[2] || (n > 100 ? 'mm' : 'in');
+  if (unit === 'mm') n /= 25.4;
+  else if (unit === 'cm') n /= 2.54;
+  return n > 0 && n < 80 ? Math.round(n * 1000) / 1000 : null;
+}
+
+// Multi-scale pair, e.g. "26.25-25.5" or "667-648 mm" → [bass, treble] in inches.
+export function parseMulti(text) {
+  const parts = String(text ?? '').toLowerCase().replace(/(mm|in|")/g, ' $1').split(/\s*(?:-|–|to|\/)\s*/).filter(Boolean);
+  if (parts.length < 2) return null;
+  const unit = /mm/.test(text) ? ' mm' : '';
+  const a = parseLength(parts[0].replace(/\s*(mm|in|")\s*$/, '') + unit), b = parseLength(parts[1].replace(/\s*(mm|in|")\s*$/, '') + unit);
+  return a && b ? [Math.max(a, b), Math.min(a, b)] : null;
+}
+
+// Scale length in inches (or [bass, treble] for multi-scale), from the select or the custom fields.
+export function scaleOf(spec) {
+  if (spec.scale === 'other') return { inches: parseLength(spec.scaleCustom) };
+  if (spec.scale === 'multi') { const p = parseMulti(spec.scaleMulti); return { multi: p, inches: p ? (p[0] + p[1]) / 2 : null }; }
+  const n = parseFloat(spec.scale);
+  return { inches: Number.isFinite(n) ? n : null };
+}
+
+export const fmtIn = n => `${Math.round(n * 1000) / 1000}" (${Math.round(n * 25.4)} mm)`;

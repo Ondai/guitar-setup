@@ -1,4 +1,4 @@
-import { INSTRUMENTS, OPTIONS, TUNINGS, GAUGES, BRIDGE_MODELS, NOT_SURE, blankSpec } from './data.js';
+import { INSTRUMENTS, OPTIONS, TUNINGS, GAUGES, BRIDGE_MODELS, NOT_SURE, blankSpec, parseLength, parseMulti, fmtIn } from './data.js';
 import { buildGuide, esc } from './guide.js';
 import { TOOL_CATALOG, TOOL_LABEL } from './tools.js';
 
@@ -23,7 +23,7 @@ async function api(method, path, body) {
 }
 
 // ---------- state ----------
-const state = { me: null, instruments: [], loaded: false };
+const state = { me: null, instruments: [], loaded: false, library: null };
 let draft = null; // instrument being created or edited
 
 const owned = () => (state.me && state.me.toolbox.set ? new Set(state.me.toolbox.tools) : null);
@@ -79,10 +79,13 @@ function fieldsFor(type) {
     { key: 'tuning', label: 'Tuning', kind: 'chips', chips: TUNINGS[type], placeholder: 'e.g. E standard' },
 
     { group: 'Neck & fingerboard', key: 'scale', label: 'Scale length', kind: 'select', options: OPTIONS.scale[type] },
+    { key: 'scaleCustom', label: 'Your scale length', kind: 'length', placeholder: 'e.g. 25 or 635 mm', show: s => s.scale === 'other', help: 'Inches or mm — the guide uses it for targets and the intonation check.' },
+    { key: 'scaleMulti', label: 'Multi-scale lengths (bass side – treble side)', kind: 'length', multi: true, placeholder: 'e.g. 26.25-25.5', show: s => s.scale === 'multi' },
     { key: 'fretted', label: 'Fretted or fretless', kind: 'seg', options: OPTIONS.fretted, show: () => isB },
     { key: 'fbMaterial', label: 'Fingerboard material', kind: 'select', options: OPTIONS.fbMaterial },
     { key: 'fbFinish', label: 'Fingerboard finish', kind: 'select', options: OPTIONS.fbFinish, help: 'Maple boards are usually finished; rosewood, ebony and most dark woods are bare. This decides whether the board ever gets oiled.' },
     { key: 'radius', label: 'Fingerboard radius', kind: 'select', options: OPTIONS.radius },
+    { key: 'radiusCustom', label: 'Your fingerboard radius', kind: 'length', placeholder: 'e.g. 17 or 430 mm', show: s => s.radius === 'other' },
     { key: 'frets', label: 'Number of frets', kind: 'number', show: s => s.fretted !== 'fretless' },
     { key: 'fretSize', label: 'Fret size', kind: 'select', options: OPTIONS.fretSize, show: s => s.fretted !== 'fretless' },
     { key: 'fretMaterial', label: 'Fret material', kind: 'select', options: OPTIONS.fretMaterial, show: s => s.fretted !== 'fretless' },
@@ -170,6 +173,29 @@ function viewAuth(mode = 'login') {
   };
 }
 
+// Model library: the starter set shipped with the app, plus specs saved on this server (which win on a match).
+const libKey = m => `${m.type}:${`${m.make} ${m.model}`.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()}`;
+async function loadLibrary() {
+  const [seed, saved] = await Promise.all([
+    fetch('data/models.json').then(r => r.json()).then(d => d.models),
+    api('GET', '/api/models'),
+  ]);
+  const byKey = new Map(seed.map(m => [libKey(m), m]));
+  for (const m of saved) {
+    const prev = byKey.get(libKey(m));
+    // A saved entry replaces the starter one but keeps its search aliases and sheet badge.
+    byKey.set(libKey(m), { ...m, aliases: prev ? prev.aliases : [], source: prev && prev.source === 'sheet' ? 'sheet' : 'saved', savedOver: !!prev });
+  }
+  state.library = [...byKey.values()];
+}
+
+async function saveToLibrary(inst) {
+  if (!inst.model) return;
+  const entry = { type: inst.type, make: inst.make || '', model: inst.model, spec: inst.spec };
+  await api('PUT', '/api/models', entry);
+  state.library = null; // reload on next use
+}
+
 async function loadInstruments() {
   state.instruments = await api('GET', '/api/instruments');
   state.loaded = true;
@@ -207,7 +233,7 @@ function viewHome() {
   <main class="wrap home">
     <section class="hero">
       <h1>Set up your instrument</h1>
-      <p class="lede">Pick what you're working on, look up its specs, and get a step-by-step setup guide tailored to that exact guitar or bass.</p>
+      <p class="lede">Pick what you're working on, choose the model, and get a step-by-step setup guide tailored to that exact guitar or bass.</p>
     </section>
     ${!tb.set ? `<a class="banner" href="#/tools">${TOOLBOX_ICON}<span><strong>Set up your toolbox.</strong> Tick the tools you own and every guide will flag what you're missing.</span><span class="chev">›</span></a>` : ''}
     <div class="instrument-grid">
@@ -280,54 +306,68 @@ function viewTools(welcome) {
   };
 }
 
-// ---------- views: model lookup ----------
-function viewLookup(type) {
+// ---------- views: pick a model from the library ----------
+const SOURCE_LABEL = { sheet: 'Your instrument', saved: 'Saved', catalog: 'Common model' };
+
+async function viewModel(type) {
   if (!INSTRUMENTS[type]) return go('#/');
-  const enabled = state.me.lookupEnabled;
-  const example = { electric: 'Ibanez RG550', acoustic: 'Yamaha APX500II', bass: 'Fender Player Jazz Bass' }[type];
+  if (!state.library) await loadLibrary();
+  const models = state.library.filter(m => m.type === type);
+  const example = { electric: 'Strat, RG550, Les Paul', acoustic: 'APX500II, D-28, 314ce', bass: 'Jazz Bass, StingRay' }[type];
   h(`${topbar({ back: '#/', title: INSTRUMENTS[type].label })}
   <main class="wrap narrow">
     <h1>What's the model?</h1>
-    <p class="lede">Type the make and model and we'll search the web for its factory specs. You'll check every one before the guide is built.</p>
-    <form id="lookup-form" class="card-form">
-      <div class="field">
-        <label for="q">Make and model</label>
-        <input id="q" type="search" autocomplete="off" placeholder="e.g. ${esc(example)}" enterkeyhint="search" required>
-        <p class="help">The more exact the better — include the generation (II, III) or year if you know it.</p>
-      </div>
-      <button class="btn primary large block" type="submit" ${enabled ? '' : 'disabled'}>Look up specs</button>
-      ${enabled ? '' : '<p class="help warn-text">Spec lookup isn\'t set up on the server yet (it needs a Claude API key — see the README). You can still enter the specs yourself.</p>'}
-    </form>
-    <div id="lookup-status"></div>
-    <div class="divider"><span>or</span></div>
+    <p class="lede">Search the model library. Pick a match to start from its specs — you'll check every one before the guide is built.</p>
+    <div class="field">
+      <label for="q">Make or model</label>
+      <input id="q" type="search" autocomplete="off" placeholder="e.g. ${esc(example)}">
+    </div>
+    <div id="results"></div>
+    <div class="divider"><span>not listed?</span></div>
     <button class="btn block secondary" id="skip">Enter specs myself</button>
+    <p class="help center">Specs you enter are saved to your library, so the model is listed next time.</p>
   </main>`);
 
-  const form = document.getElementById('lookup-form');
   const input = document.getElementById('q');
-  const status = document.getElementById('lookup-status');
-  const newDraft = (spec = {}, extra = {}) => ({ id: null, type, make: '', model: input.value.trim(), nickname: '', spec: { ...blankSpec(type), ...spec }, log: [], progress: {}, ...extra });
+  const results = document.getElementById('results');
+  const norm = t => String(t).toLowerCase().replace(/[^a-z0-9$]+/g, ' ').trim();
+  const score = (m, q) => {
+    if (!q) return m.source === 'sheet' ? 3 : m.source === 'saved' ? 2 : 1;
+    const name = norm(`${m.make} ${m.model}`), words = q.split(' ');
+    if (name.includes(q) || m.aliases.some(a => norm(a) === q)) return 10;
+    if (words.every(w => name.includes(w) || m.aliases.some(a => norm(a).includes(w)))) return 6;
+    if (m.aliases.some(a => q.includes(norm(a)) && norm(a).length > 2)) return 4;
+    return 0;
+  };
+  const row = m => `<li><button class="preset" data-id="${esc(m.id)}"><span class="preset-name"><strong>${esc(m.make)}</strong> ${esc(m.model)}</span><span class="chip src-${m.source}">${SOURCE_LABEL[m.source]}</span><span class="chev">›</span></button></li>`;
+  const render = () => {
+    const q = norm(input.value);
+    const hits = models.map(m => [m, score(m, q)]).filter(x => x[1] > 0)
+      .sort((a, b) => b[1] - a[1] || a[0].make.localeCompare(b[0].make) || a[0].model.localeCompare(b[0].model)).map(x => x[0]);
+    if (!q) {
+      const mine = hits.filter(m => m.source !== 'catalog'), common = hits.filter(m => m.source === 'catalog');
+      results.innerHTML = (mine.length ? `<h2 class="list-head">Your instruments &amp; saved models</h2><ul class="preset-list">${mine.map(row).join('')}</ul>` : '')
+        + `<h2 class="list-head">Common models</h2><ul class="preset-list">${common.map(row).join('')}</ul>`;
+    } else {
+      results.innerHTML = hits.length ? `<ul class="preset-list">${hits.slice(0, 25).map(row).join('')}</ul>`
+        : `<ul class="preset-list"><li class="empty">Nothing matches “${esc(input.value)}”. Use <strong>Enter specs myself</strong> — we'll keep what you typed as the model.</li></ul>`;
+    }
+  };
+  input.oninput = render; render();
 
-  document.getElementById('skip').onclick = () => { draft = newDraft(); go('#/specs'); };
-  form.onsubmit = async e => {
-    e.preventDefault();
-    const query = input.value.trim(); if (!query) return;
-    const btn = form.querySelector('button'); btn.disabled = true; input.disabled = true;
-    const t0 = Date.now();
-    status.innerHTML = `<div class="searching"><span class="spinner" aria-hidden="true"></span><div><strong>Searching the web for ${esc(query)}…</strong><p class="muted small-text">Reading spec sheets and retailer listings. This usually takes 30–90 seconds. <span id="elapsed"></span></p></div></div>`;
-    const tick = setInterval(() => { const el = document.getElementById('elapsed'); if (el) el.textContent = `${Math.round((Date.now() - t0) / 1000)}s`; }, 1000);
-    try {
-      const r = await api('POST', '/api/lookup', { type, query });
-      draft = newDraft(cleanSpec(type, r.spec), {
-        make: r.make || '', model: r.model || query,
-        lookup: { query, found: r.found, year: r.year, notes: r.notes, sources: r.sources || [], uncertain: r.uncertain || [] },
-      });
-      if (r.year) draft.spec.year = r.year;
-      go('#/specs');
-    } catch (ex) {
-      status.innerHTML = `<div class="callout warn"><span class="callout-label">Lookup failed</span><div>${esc(ex.message)}</div></div>`;
-      btn.disabled = false; input.disabled = false;
-    } finally { clearInterval(tick); }
+  results.onclick = e => {
+    const b = e.target.closest('.preset'); if (!b) return;
+    const m = models.find(x => x.id === b.dataset.id);
+    draft = { id: null, type, make: m.make, model: m.model, nickname: '', spec: { ...blankSpec(type), ...cleanSpec(type, m.spec) }, log: [], progress: {},
+      lib: { source: m.source, note: m.note || '', verify: m.verify || [], savedBy: m.savedBy || null } };
+    go('#/specs');
+  };
+  document.getElementById('skip').onclick = () => {
+    // Best guess at make/model from what was typed: first word is usually the brand.
+    const typed = input.value.trim().split(/\s+/);
+    const make = typed.length > 1 ? typed[0] : '', model = typed.length > 1 ? typed.slice(1).join(' ') : typed.join(' ');
+    draft = { id: null, type, make, model, nickname: '', spec: blankSpec(type), log: [], progress: {} };
+    go('#/specs');
   };
 }
 
@@ -356,8 +396,8 @@ function viewSpecs(existingId) {
   const fields = fieldsFor(type);
   const getV = k => TOP_KEYS.includes(k) ? d[k] : d.spec[k];
   const setV = (k, v) => { if (TOP_KEYS.includes(k)) d[k] = v; else d.spec[k] = v; };
-  // Fields the lookup guessed stay flagged until the user touches them.
-  const unchecked = new Set(!existingId && d.lookup ? d.lookup.uncertain : []);
+  // Library fields marked as estimates stay flagged until the user touches them.
+  const unchecked = new Set(!existingId && d.lib ? d.lib.verify : []);
 
   let groupOpen = false;
   const parts = [];
@@ -371,19 +411,19 @@ function viewSpecs(existingId) {
   });
   if (groupOpen) parts.push('</div></fieldset>');
 
-  const L = d.lookup;
-  const lookupCard = L && !existingId ? `
-    <section class="lookup-card ${L.found ? '' : 'not-found'}">
-      <h2>${L.found ? `Found specs for ${esc([d.make, d.model].filter(Boolean).join(' '))}` : `Couldn't find the exact ${esc(L.query)}`}</h2>
-      <p>${L.found ? '' : 'These are best guesses from similar models — check each one. '}${esc(L.notes || '')}</p>
-      ${unchecked.size ? `<p class="check-count"><span class="chip verify">Check</span> ${unchecked.size} field${unchecked.size === 1 ? ' was estimated or varies' : 's were estimated or vary'} between versions. They're marked below.</p>` : ''}
-      ${L.sources.length ? `<details><summary>Sources (${L.sources.length})</summary><ul>${L.sources.map(s => `<li><a href="${esc(s.url)}" target="_blank" rel="noopener noreferrer">${esc(s.title || s.url)}</a></li>`).join('')}</ul></details>` : ''}
+  const L = d.lib;
+  const origin = L && ({ sheet: 'Filled from your Instrument Info sheet', saved: `Filled from your library${L.savedBy ? ` (saved by ${esc(L.savedBy)})` : ''}`, catalog: 'Filled with typical factory specs' })[L.source];
+  const libCard = L && !existingId ? `
+    <section class="lib-card">
+      <h2>${origin} for the ${esc([d.make, d.model].filter(Boolean).join(' '))}</h2>
+      <p>${L.source === 'catalog' ? 'Specs change by year and region, so check each one against your instrument. ' : ''}${esc(L.note || '')}</p>
+      ${unchecked.size ? `<p class="check-count"><span class="chip verify">Check</span> ${unchecked.size} field${unchecked.size === 1 ? ' is an estimate or varies' : 's are estimates or vary'} between versions. They're marked below.</p>` : ''}
     </section>` : '';
 
   h(`${topbar({ back: existingId ? `#/guide/${existingId}` : `#/new/${type}`, title: existingId ? 'Edit specs' : 'Specs' })}
   <main class="wrap form-wrap">
     <h1>${existingId ? 'Edit specs' : 'Check the specs'}</h1>
-    ${lookupCard || `<p class="lede">${existingId ? 'Changes update the guide straight away.' : 'Fill in what you know. Anything left on “Not sure” gets general guidance that covers the common cases.'}</p>`}
+    ${libCard || `<p class="lede">${existingId ? 'Changes update the guide straight away.' : 'Fill in what you know. Anything left on “Not sure” gets general guidance that covers the common cases.'}</p>`}
     <form id="spec-form" novalidate>
       ${parts.join('')}
       <datalist id="bridge-models">${BRIDGE_MODELS.map(m => `<option value="${esc(m)}">`).join('')}</datalist>
@@ -415,6 +455,7 @@ function viewSpecs(existingId) {
     setV(f.key, v);
     markChecked(wrap);
     if (f.kind === 'chips') syncPressed(wrap, v);
+    if (f.kind === 'length') wrap.querySelector('[data-parsed]').textContent = lengthPreview(f, v);
     if (f.key === 'fbMaterial' && d.spec.fbFinish === NOT_SURE && v !== NOT_SURE) {
       d.spec.fbFinish = v === 'maple' ? 'finished' : 'unfinished';
       const sel = form.querySelector('[data-key="fbFinish"]'); if (sel) sel.value = d.spec.fbFinish;
@@ -442,6 +483,7 @@ function viewSpecs(existingId) {
     if (!d.id) d.id = uid();
     try {
       await saveInst(d);
+      saveToLibrary(d).catch(() => toast('Saved, but couldn\'t add it to the model library.', 'error'));
       const id = d.id; draft = null;
       go(`#/guide/${id}`);
     } catch (ex) { toast(ex.message, 'error'); btn.disabled = false; }
@@ -454,6 +496,13 @@ function viewSpecs(existingId) {
     draft = null; go('#/');
   };
   refreshVisibility();
+}
+
+function lengthPreview(f, v) {
+  if (!String(v ?? '').trim()) return '';
+  if (f.multi) { const p = parseMulti(v); return p ? `✓ ${fmtIn(p[0])} to ${fmtIn(p[1])}` : 'Enter two lengths, like 26.25-25.5'; }
+  const n = parseLength(v);
+  return n ? `✓ ${fmtIn(n)}` : 'Enter a number in inches or mm, like 25 or 635 mm';
 }
 
 function syncPressed(wrap, v) {
@@ -472,6 +521,9 @@ function renderField(f, idx, value, uncertain) {
       break;
     case 'number':
       control = `<input id="${id}" data-key="${f.key}" type="number" inputmode="numeric" min="0" max="36" value="${esc(v)}">`;
+      break;
+    case 'length':
+      control = `<input id="${id}" data-key="${f.key}" type="text" inputmode="decimal" value="${esc(v)}" placeholder="${esc(f.placeholder || '')}" autocomplete="off"><p class="help parsed" data-parsed>${lengthPreview(f, v)}</p>`;
       break;
     case 'textarea':
       control = `<textarea id="${id}" data-key="${f.key}" rows="3" placeholder="${esc(f.placeholder || '')}">${esc(v)}</textarea>`;
@@ -625,7 +677,7 @@ async function route() {
   }
   if (!state.loaded) await loadInstruments();
   if (a === 'tools') return viewTools(query === 'welcome');
-  if (a === 'new' && b) return viewLookup(b);
+  if (a === 'new' && b) return viewModel(b);
   if (a === 'specs') return viewSpecs();
   if (a === 'edit' && b) return viewSpecs(b);
   if (a === 'guide' && b) return viewGuide(b);

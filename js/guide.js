@@ -2,7 +2,7 @@
 // Output is a list of sections: { id, title, html }. Step lists carry data-step keys so
 // the app can persist checkbox progress per instrument.
 
-import { OPTIONS, NOT_SURE, BRIDGE_KB, TARGET_OVERRIDES, INSTRUMENTS, optionLabel, blankSpec } from './data.js';
+import { OPTIONS, NOT_SURE, BRIDGE_KB, TARGET_OVERRIDES, INSTRUMENTS, optionLabel, blankSpec, parseLength, scaleOf, fmtIn } from './data.js';
 import { toolRequirements, checkTools } from './tools.js';
 
 // ---------- small helpers ----------
@@ -49,7 +49,11 @@ function parseGauge(g) {
   return { top: Math.min(...vals), bottom: Math.max(...vals) };
 }
 
-function radiusInfo(v) {
+function radiusInfo(v, custom) {
+  if (v === 'other') {
+    const n = parseLength(custom);
+    return n ? { known: true, inches: n, label: fmtIn(n), gauge: Math.round(n * 4) / 4 } : { known: false, label: 'unknown radius', gauge: null };
+  }
   if (!v || v === NOT_SURE) return { known: false, label: 'unknown radius', gauge: null };
   if (v === 'flat') return { known: true, flat: true, label: 'flat', gauge: null };
   if (v.startsWith('c-')) {
@@ -84,7 +88,7 @@ function buildContext(inst) {
   const name = inst.nickname || [s.make || inst.make, s.model || inst.model].filter(Boolean).join(' ') || INSTRUMENTS[type].label;
   const imperial = /fender|gibson|music man|martin|taylor|gretsch/i.test(inst.make || '') && !/squier|epiphone|player|mexico/i.test(`${inst.make} ${inst.model}`);
   const imperialKnown = imperial ? true : (inst.make ? false : null);
-  const individualSaddles = ['trem-vintage', 'trem-2point', 'hardtail', 'tele-modern', 'bass-vintage', 'bass-highmass', 'bass-monorail'].includes(bridge)
+  const individualSaddles = ['trem-vintage', 'trem-2point', 'hardtail', 'tele-modern', 'headless', 'bass-vintage', 'bass-highmass', 'bass-monorail'].includes(bridge)
     || (bridge === 'wraparound' && /510ub/i.test(s.bridgeModel || ''));
 
   return {
@@ -96,17 +100,27 @@ function buildContext(inst) {
     locking: bridge === 'trem-locking' || s.nut === 'locking',
     lockingNut: s.nut === 'locking',
     tom: bridge === 'tom-stopbar' || bridge === 'tom-through' || bridge === 'bass-tom',
-    radius: radiusInfo(s.radius),
+    radius: radiusInfo(s.radius, s.radiusCustom),
+    scaleLen: scaleOf(s),
     active: s.active === 'yes',
     hasBattery: (s.active === 'yes' || (type === 'acoustic' && !['none', NOT_SURE].includes(s.electronics))) && s.battery !== 'none',
     noRod: s.trussAccess === 'none',
     nitro: [s.bodyFinish, s.neckFinish].some(f => f === 'nitro' || f === 'nitro-satin'),
     solidWood: type === 'acoustic' && ['solid', 'all-solid'].includes(s.top),
     multiscale: s.scale === 'multi',
-    shortScale: type === 'bass' && ['30', '32'].includes(s.scale),
+    headless: bridge === 'headless',
     lockingTuners: s.lockingTuners === 'yes',
     stainless: s.fretMaterial === 'stainless',
   };
+}
+
+// Short scales run lower tension (strings swing wider, so a little more action); long scales the opposite.
+function scaleClass(c) {
+  const n = c.scaleLen.inches;
+  if (!n) return null;
+  if (c.isBass) return n < 33 ? 'short' : n >= 35 ? 'long' : 'standard';
+  if (c.isAcoustic && c.nylon) return n < 25 ? 'short' : 'standard';
+  return n < 24.9 ? 'short' : n >= 26.4 ? 'long' : 'standard';
 }
 
 // ---------- measurement targets ----------
@@ -136,6 +150,9 @@ export function computeTargets(c) {
     if (c.lowTuning) bass += 0.2;
     nut = [0.10, 0.15];
   }
+  const sc = scaleClass(c);
+  if (sc === 'short') { treble += 0.1; bass += 0.1; note += `The ${r2(c.scaleLen.inches)}" scale runs lower string tension than ${type === 'bass' ? 'a 34"' : 'a 25.5"'} neck, so action is set a touch higher to keep the wider string swing off the frets. `; }
+  if (sc === 'long') { relief = relief.map(x => x + 0.05); note += `The longer ${c.multiscale ? 'bass-side ' : ''}scale holds more tension, especially on the low strings; relief allows for that. `; }
   const styleAdj = type === 'bass' ? 0.3 : 0.2;
   if (heavy) { treble += styleAdj; bass += styleAdj; relief = relief.map(x => x + 0.05); }
   if (light) { treble -= styleAdj; bass -= styleAdj; }
@@ -149,7 +166,7 @@ export function computeTargets(c) {
     if (o.actionFret) t.fret = o.actionFret;
     if (o.actionTreble) t.treble = o.actionTreble;
     if (o.actionBass) t.bass = o.actionBass;
-    if (o.note) t.note = o.note;
+    if (o.note) t.note = o.note + ' ' + note;
   }
   return t;
 }
@@ -197,7 +214,9 @@ function glance(c, t) {
   add('Instrument', INSTRUMENTS[type].label);
   add('Model', [c.inst.make, c.inst.model, s.year].filter(Boolean).map(esc).join(' '));
   add('Strings', `${s.strings}-string${s.gauge ? `, ${esc(s.gauge)}` : ''}${s.tuning ? `, ${esc(s.tuning)}` : ''}${c.isBass && s.bassStringType !== NOT_SURE ? `, ${optionLabel(OPTIONS.bassStringType, s.bassStringType).toLowerCase()}` : ''}${c.nylon ? ', nylon' : ''}`);
-  add('Scale length', optionLabel(OPTIONS.scale[type], s.scale));
+  add('Scale length', s.scale === 'other' ? (c.scaleLen.inches ? fmtIn(c.scaleLen.inches) : 'Other (not entered)')
+    : s.scale === 'multi' ? (c.scaleLen.multi ? `Multi-scale, ${fmtIn(c.scaleLen.multi[0])} bass side to ${fmtIn(c.scaleLen.multi[1])} treble side` : 'Multi-scale')
+    : optionLabel(OPTIONS.scale[type], s.scale));
   if (c.isElectric || c.isBass) {
     add('Bridge', `${optionLabel(c.isBass ? OPTIONS.bridgeBass : OPTIONS.bridgeElectric, s.bridgeType)}${s.bridgeModel ? ` — ${esc(s.bridgeModel)}` : ''}${c.isTrem ? `, ${optionLabel(OPTIONS.tremSetup, s.tremSetup).toLowerCase()}` : ''}`);
   } else {
@@ -227,7 +246,7 @@ function glance(c, t) {
   return `<p>${intro}</p>
     ${table(['Spec', 'This instrument'], specRows, 'spec')}
     ${table(['Measurement', 'Target', 'How it\'s measured'], targetRows, 'targets')}
-    ${c.inst.lookup ? callout('note', `Specs were looked up online for the ${esc(c.inst.lookup.query)} and checked by you. If anything on the guitar turns out different, fix it in the spec form and the guide updates.`) : ''}`;
+    ${c.inst.lib && c.inst.lib.source === 'catalog' ? callout('note', 'Specs started from typical factory values for this model and were checked by you. If anything on the instrument turns out different, fix it in the spec form and the guide updates.') : ''}`;
 }
 
 function tools(c, owned) {
@@ -367,6 +386,10 @@ function stringChange(c) {
       intro = 'Strings load into the EverTune module at the back. Keep the manual handy for tensioning each string into its working zone.';
       anchor = 'Feed the string into its module as the EverTune manual shows, then over the saddle.';
       break;
+    case 'headless':
+      intro = 'On a headless instrument the tuners are on the bridge and the strings anchor at the head piece. Change one string at a time so the neck keeps even tension. Systems differ in which end takes the ball — check the old string as it comes out, and copy it.';
+      anchor = 'Slack the string fully with its tuner knob at the bridge, then release it from the head-piece clamp and the bridge. Fit the new string the same way round: seat the anchored end (usually the ball end, or the clamped end on double-ball sets), run it over the nut and saddle, and lock it in the bridge clamp with the tuner wound back near the start of its travel so you have room to tune up. Trim the excess with flush cutters.';
+      break;
     case 'bass-vintage': case 'bass-highmass': case 'bass-monorail': case 'bass-tom': case 'other':
       if (c.isBass) {
         intro = 'Change one string at a time to keep even tension on the neck — and so you can copy the old string\'s length and wrap as you go.';
@@ -409,14 +432,14 @@ function stringChange(c) {
   return `<p>${intro}</p>
     ${kbNotes}
     ${steps('strings', [
-      'Slack the old string until it\'s floppy, then unwind it from the tuner and pull it out.',
+      c.headless ? null : 'Slack the old string until it\'s floppy, then unwind it from the tuner and pull it out.',
       'Clean the fingerboard and under the strings while there\'s room, if due.',
       anchor,
       c.bridge === 'tom-stopbar' && /abr/i.test(s.bridgeModel || '') ? 'Check the saddle retaining wire is still in place before you bring tension back up.' : null,
-      'Run the string over its nut slot to the tuner.',
-      tunerSteps,
-      'Tune to pitch. Stretch the string gently along its length, retune, repeat about three times.',
-      'Trim the end close to the post.',
+      c.headless ? null : 'Run the string over its nut slot to the tuner.',
+      c.headless ? null : tunerSteps,
+      `Tune to pitch${c.headless ? ' with the bridge tuner knob' : ''}. Stretch the string gently along its length, retune, repeat about three times.`,
+      c.headless ? null : 'Trim the end close to the post.',
       c.floating && !c.locking ? 'After the last string, retune everything twice. Every change in tension on a floating bridge pulls all the others slightly.' : null,
     ])}
     ${callout('warn', 'Changing gauge or tuning? Run the full Order of operations — ' + (c.isTrem ? 'spring tension, ' : '') + 'relief, action and intonation all move.')}`;
@@ -488,7 +511,7 @@ function reliefSection(c, t) {
       'Move no more than an eighth of a turn at a time. Retune, flex the neck gently, wait a few minutes, and measure again.',
     ])}
     ${callout('warn', 'If the rod feels stiff, back it off a little first rather than forcing it tighter. A rod that won\'t turn, or creaks, is a job for a tech. Any rod change moves action — re-check the next section afterward.')}
-    ${c.multiscale ? callout('note', 'On a multi-scale neck, put the capo square across the 1st fret and measure each side at its own 7th–8th fret.') : ''}`;
+    ${c.multiscale ? callout('note', `On a multi-scale neck the frets fan, so the 1st fret isn't square to the neck. Put the capo along the 1st fret itself and measure each outer string at its own 7th–8th fret.${c.scaleLen.multi ? ` Expect the ${fmtIn(c.scaleLen.multi[0])} bass side to want slightly more relief than the treble side; set the rod for the bass side and accept a hair less on the treble.` : ''}`) : ''}`;
 }
 
 function actionSection(c, t) {
@@ -589,7 +612,23 @@ function nutSection(c, t) {
     ${callout('tip', `At every string change, rub a little graphite (soft pencil) or nut lubricant into the slots — ${c.isTrem || c.bridge === 'bigsby' ? 'it\'s the biggest single fix for a trem that won\'t return to pitch' : 'it stops pinging and sticking as you tune'}.`)}`;
 }
 
+// Where the saddles should roughly sit for this scale — catches a wrong scale entry, or a saddle at the end of its travel.
+function scaleCheck(c) {
+  const L = c.scaleLen;
+  if (!L.inches) return '';
+  const comp = c.isBass ? [[3, 5], [6, 10]] : [[1.5, 3], [3, 6]];
+  const std6 = !c.isBass && c.s.strings === 6;
+  const hi = std6 ? 'high E' : 'highest string', lo = std6 ? 'low E' : 'lowest string';
+  const one = (len, label) => `${label ? `<strong>${label[0].toUpperCase() + label.slice(1)}:</strong> nut` : 'Nut'} to the middle of the 12th fret should measure <span class="meas">${r1(len * 25.4 / 2)} mm</span> <span class="imp">(${r2(len / 2)}")</span>, half of ${fmtIn(len)}.`;
+  const lines = L.multi ? [one(L.multi[0], `${lo} side`), one(L.multi[1], `${hi} side`)] : [one(L.inches)];
+  return callout('info', `<strong>Scale check.</strong> ${lines.join(' ')} The saddles sit a little past the full scale length — typically ${comp[0][0]}–${comp[0][1]} mm on the ${hi} and ${comp[1][0]}–${comp[1][1]} mm on the ${lo}, measured from the nut. If a saddle is way off that, or out of travel, recheck the scale length you entered before blaming the bridge.`);
+}
+
 function intonationSection(c) {
+  return intonationSteps(c) + scaleCheck(c);
+}
+
+function intonationSteps(c) {
   const { s } = c;
   const rule = `${c.fretless ? 'Stopped note at the 12th fret marker' : 'Fretted 12th'} flat → move the saddle toward the neck. Sharp → move it away from the neck.`;
   const base = `<p>Intonation is right when each string's ${c.fretless ? 'stopped note at the 12th fret marker' : 'fretted 12th-fret note'} reads exactly the same as its 12th-fret harmonic. Do it last, with fresh strings, after relief and action — both change it.</p>`;

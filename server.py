@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""Setup Bench server: serves the app and a small JSON API (accounts, toolbox, instruments, spec lookup).
+"""Setup Bench server: serves the app and a small JSON API (accounts, toolbox, instruments, model library).
 
 Usage:  python3 server.py            (port 8000)
         python3 server.py 8080       (another port)
 
-Data lives in setupbench.db next to this file. Spec lookup needs ANTHROPIC_API_KEY (see README).
+Data lives in setupbench.db next to this file. Needs only the Python standard library.
 """
 import hashlib
 import hmac
@@ -21,8 +21,6 @@ import time
 from http import cookies
 from pathlib import Path
 from urllib.parse import urlparse
-
-import lookup
 
 ROOT = Path(__file__).resolve().parent
 DB_PATH = Path(os.environ.get("SETUPBENCH_DB", ROOT / "setupbench.db"))
@@ -58,8 +56,9 @@ def init_db():
         CREATE TABLE IF NOT EXISTS instruments (
             id TEXT NOT NULL, user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
             data TEXT NOT NULL, updated REAL NOT NULL, PRIMARY KEY (user_id, id));
-        CREATE TABLE IF NOT EXISTS lookups (
-            key TEXT PRIMARY KEY, result TEXT NOT NULL, created REAL NOT NULL);
+        CREATE TABLE IF NOT EXISTS models (
+            key TEXT PRIMARY KEY, data TEXT NOT NULL, saved_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+            updated REAL NOT NULL);
         """)
 
 
@@ -185,12 +184,7 @@ def me_payload(user):
     return {
         "user": {"username": user["username"]},
         "toolbox": {"tools": json.loads(tb["tools"]), "custom": json.loads(tb["custom"]), "set": True} if tb else {"tools": [], "custom": [], "set": False},
-        "lookupEnabled": lookup.available(),
     }
-
-
-def r_status(h, _):
-    h.send_json(200, {"lookupEnabled": lookup.available()})
 
 
 def r_me(h, _):
@@ -273,29 +267,43 @@ def r_delete_instrument(h, path):
     h.send_json(200, {"ok": True})
 
 
-def r_lookup(h, _):
+PRIVATE_SPEC_KEYS = {"nickname", "notes", "style", "climate"}  # personal, never shared into the library
+SPEC_KEY_RE = re.compile(r"^[A-Za-z]{1,32}$")
+
+
+def model_key(type_, make, model):
+    norm = lambda t: re.sub(r"[^a-z0-9]+", " ", str(t).lower()).strip()
+    return f"{type_}:{norm(make)}:{norm(model)}"
+
+
+def r_models(h, _):
     h.require_user()
-    b = h.body()
-    type_, query = b.get("type"), " ".join(str(b.get("query", "")).split())
-    key = f"{type_}:{query.lower()}"
-    if not b.get("refresh"):
-        with db() as c:
-            row = c.execute("SELECT result FROM lookups WHERE key = ?", (key,)).fetchone()
-        if row:
-            return h.send_json(200, {**json.loads(row["result"]), "cached": True})
-    if not lookup.available():
-        raise ApiError(503, "Spec lookup isn't set up on the server. See the README to add an API key, or enter the specs yourself.")
-    try:
-        result = lookup.lookup(type_, query)
-    except lookup.LookupError_ as e:
-        raise ApiError(502, str(e))
     with db() as c:
-        c.execute("INSERT OR REPLACE INTO lookups VALUES (?, ?, ?)", (key, json.dumps(result), time.time()))
-    h.send_json(200, result)
+        rows = c.execute("SELECT m.data, m.updated, u.username FROM models m LEFT JOIN users u ON u.id = m.saved_by "
+                         "ORDER BY m.updated DESC").fetchall()
+    h.send_json(200, [{**json.loads(r["data"]), "savedBy": r["username"], "updated": r["updated"]} for r in rows])
+
+
+def r_put_model(h, _):
+    """Save checked specs into the shared library (one entry per type + make + model, latest wins)."""
+    u = h.require_user()
+    b = h.body()
+    type_, make, model = b.get("type"), str(b.get("make", "")).strip()[:60], str(b.get("model", "")).strip()[:80]
+    spec = b.get("spec")
+    if type_ not in ("electric", "acoustic", "bass") or not model or not isinstance(spec, dict):
+        raise ApiError(400, "A library entry needs a type, a model name and specs.")
+    clean = {k: v for k, v in spec.items()
+             if SPEC_KEY_RE.match(k) and k not in PRIVATE_SPEC_KEYS and isinstance(v, (str, int, float)) and len(str(v)) <= 200}
+    key = model_key(type_, make, model)
+    entry = {"id": "lib-" + re.sub(r"[^a-z0-9]+", "-", key.lower()).strip("-")[:80], "type": type_, "make": make,
+             "model": model, "aliases": [], "source": "saved", "spec": clean, "verify": [], "note": ""}
+    with db() as c:
+        c.execute("INSERT INTO models VALUES (?, ?, ?, ?) ON CONFLICT(key) DO UPDATE SET data = excluded.data, "
+                  "saved_by = excluded.saved_by, updated = excluded.updated", (key, json.dumps(entry), u["id"], time.time()))
+    h.send_json(200, {"ok": True, "id": entry["id"]})
 
 
 ROUTES = {
-    ("GET", "/api/status"): r_status,
     ("GET", "/api/me"): r_me,
     ("POST", "/api/signup"): r_signup,
     ("POST", "/api/login"): r_login,
@@ -304,7 +312,8 @@ ROUTES = {
     ("GET", "/api/instruments"): r_instruments,
     ("PUT", "/api/instruments/:id"): r_put_instrument,
     ("DELETE", "/api/instruments/:id"): r_delete_instrument,
-    ("POST", "/api/lookup"): r_lookup,
+    ("GET", "/api/models"): r_models,
+    ("PUT", "/api/models"): r_put_model,
 }
 
 
@@ -326,7 +335,6 @@ if __name__ == "__main__":
         print("Setup Bench is running.")
         print(f"  On this computer:  http://localhost:{port}")
         print(f"  On your iPad:      http://{lan_ip()}:{port}   (same Wi-Fi)")
-        print(f"  Spec lookup:       {'on' if lookup.available() else 'off (set ANTHROPIC_API_KEY to enable)'}")
         print("Press Ctrl+C to stop.")
         try:
             httpd.serve_forever()

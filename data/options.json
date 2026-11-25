@@ -89,6 +89,10 @@
      "Multi-scale / fanned frets"
     ],
     [
+     "other",
+     "Other length\u2026"
+    ],
+    [
      "unsure",
      "Not sure"
     ]
@@ -109,6 +113,10 @@
     [
      "25.6",
      "650 mm / 25.6\" (classical)"
+    ],
+    [
+     "other",
+     "Other length\u2026"
     ],
     [
      "unsure",
@@ -137,6 +145,10 @@
      "Multi-scale / fanned frets"
     ],
     [
+     "other",
+     "Other length\u2026"
+    ],
+    [
      "unsure",
      "Not sure"
     ]
@@ -156,6 +168,10 @@
     "10\""
    ],
    [
+    "11",
+    "11\""
+   ],
+   [
     "12",
     "12\""
    ],
@@ -166,6 +182,10 @@
    [
     "14",
     "14\""
+   ],
+   [
+    "15",
+    "15\""
    ],
    [
     "15.75",
@@ -189,15 +209,19 @@
    ],
    [
     "c-9.5-14",
-    "Compound 9.5\"–14\""
+    "Compound 9.5\"\u201314\""
    ],
    [
     "c-10-16",
-    "Compound 10\"–16\""
+    "Compound 10\"\u201316\""
    ],
    [
     "c-12-16",
-    "Compound 12\"–16\""
+    "Compound 12\"\u201316\""
+   ],
+   [
+    "other",
+    "Other radius\u2026"
    ],
    [
     "unsure",
@@ -240,6 +264,10 @@
    [
     "walnut",
     "Walnut"
+   ],
+   [
+    "wenge",
+    "Wenge"
    ],
    [
     "ovangkol",
@@ -327,7 +355,7 @@
    ],
    [
     "synthetic",
-    "Synthetic (Tusq, Graph Tech, Nubone…)"
+    "Synthetic (Tusq, Graph Tech, Nubone\u2026)"
    ],
    [
     "plastic",
@@ -483,7 +511,7 @@
    ],
    [
     "trem-locking",
-    "Double-locking tremolo (Floyd Rose, Ibanez Edge…)"
+    "Double-locking tremolo (Floyd Rose, Ibanez Edge\u2026)"
    ],
    [
     "bigsby",
@@ -516,6 +544,10 @@
    [
     "evertune",
     "EverTune"
+   ],
+   [
+    "headless",
+    "Headless (tuners at the bridge, e.g. Strandberg EGS)"
    ],
    [
     "other",
@@ -693,15 +725,19 @@
    ],
    [
     "bass-highmass",
-    "High-mass (Badass, Fender HiMass, Gotoh 201…)"
+    "High-mass (Badass, Fender HiMass, Gotoh 201\u2026)"
    ],
    [
     "bass-monorail",
-    "Individual monorail saddles (Hipshot, ETS…)"
+    "Individual monorail saddles (Hipshot, ETS\u2026)"
    ],
    [
     "bass-tom",
     "Tune-o-matic style (Gibson / Thunderbird)"
+   ],
+   [
+    "headless",
+    "Headless (tuners at the bridge)"
    ],
    [
     "other",
