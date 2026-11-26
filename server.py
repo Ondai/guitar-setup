@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
-"""Setup Bench server: serves the app and a small JSON API (accounts, toolbox, instruments, model library).
+"""Setup Bench server: serves the app and a small JSON API (toolbox, instruments, model library).
+
+Single-user, for a home network: there's no sign-in, everyone on the Wi-Fi shares one set of data.
 
 Usage:  python3 server.py                     http://setupbench.local:8000
         python3 server.py 80                  http://setupbench.local  (no port in the address)
@@ -8,19 +10,14 @@ Usage:  python3 server.py                     http://setupbench.local:8000
 
 Data lives in setupbench.db next to this file. Needs only the Python standard library.
 """
-import hashlib
-import hmac
 import http.server
 import json
 import os
 import re
-import secrets
 import socket
 import sqlite3
 import sys
-import threading
 import time
-from http import cookies
 from pathlib import Path
 from urllib.parse import urlparse
 
@@ -28,12 +25,8 @@ import mdns
 
 ROOT = Path(__file__).resolve().parent
 DB_PATH = Path(os.environ.get("SETUPBENCH_DB", ROOT / "setupbench.db"))
-COOKIE = "sb_session"
-SESSION_DAYS = 365
 STATIC_BLOCK = re.compile(r"(^|/)\.|\.(py|db|db-journal|db-wal|txt|md)$|__pycache__")
-USERNAME_RE = re.compile(r"^[A-Za-z0-9_.-]{3,32}$")
-
-_db_lock = threading.Lock()
+LOCAL_USER = None  # set by init_db(); every request acts as this user
 
 
 # ---------- database ----------
@@ -51,9 +44,6 @@ def init_db():
         CREATE TABLE IF NOT EXISTS users (
             id INTEGER PRIMARY KEY, username TEXT UNIQUE COLLATE NOCASE NOT NULL,
             salt BLOB NOT NULL, pw_hash BLOB NOT NULL, created REAL NOT NULL);
-        CREATE TABLE IF NOT EXISTS sessions (
-            token_hash TEXT PRIMARY KEY, user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-            created REAL NOT NULL);
         CREATE TABLE IF NOT EXISTS toolbox (
             user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
             tools TEXT NOT NULL, custom TEXT NOT NULL, updated REAL NOT NULL);
@@ -64,14 +54,18 @@ def init_db():
             key TEXT PRIMARY KEY, data TEXT NOT NULL, saved_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
             updated REAL NOT NULL);
         """)
-
-
-def hash_pw(password, salt):
-    return hashlib.pbkdf2_hmac("sha256", password.encode(), salt, 310_000)
-
-
-def token_hash(token):
-    return hashlib.sha256(token.encode()).hexdigest()
+        # Adopt the account with the most data from when the app had sign-in, so nothing is lost;
+        # otherwise create the one local user.
+        row = c.execute("""
+            SELECT u.id, u.username,
+                   (SELECT COUNT(*) FROM instruments i WHERE i.user_id = u.id) +
+                   (SELECT COUNT(*) FROM toolbox t WHERE t.user_id = u.id) AS n
+            FROM users u ORDER BY n DESC, u.id LIMIT 1""").fetchone()
+        if not row:
+            c.execute("INSERT INTO users (username, salt, pw_hash, created) VALUES ('local', x'', x'', ?)", (time.time(),))
+            row = c.execute("SELECT id, username FROM users WHERE username = 'local'").fetchone()
+    global LOCAL_USER
+    LOCAL_USER = {"id": row["id"], "username": row["username"]}
 
 
 # ---------- HTTP ----------
@@ -122,13 +116,11 @@ class Handler(http.server.SimpleHTTPRequestHandler):
 
     # ---------- api plumbing ----------
 
-    def send_json(self, status, body, set_cookie=None):
+    def send_json(self, status, body):
         data = json.dumps(body).encode()
         self.send_response(status)
         self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", str(len(data)))
-        if set_cookie is not None:
-            self.send_header("Set-Cookie", set_cookie)
         self.end_headers()
         self.wfile.write(data)
 
@@ -141,30 +133,9 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         except json.JSONDecodeError:
             raise ApiError(400, "Invalid JSON.")
 
-    def session_user(self):
-        jar = cookies.SimpleCookie(self.headers.get("Cookie", ""))
-        if COOKIE not in jar:
-            return None
-        with db() as c:
-            row = c.execute("SELECT u.id, u.username FROM sessions s JOIN users u ON u.id = s.user_id WHERE s.token_hash = ?",
-                            (token_hash(jar[COOKIE].value),)).fetchone()
-        return dict(row) if row else None
-
-    def require_user(self):
-        u = self.session_user()
-        if not u:
-            raise ApiError(401, "Please sign in.")
-        return u
-
-    def new_session_cookie(self, user_id):
-        token = secrets.token_urlsafe(32)
-        with db() as c:
-            c.execute("INSERT INTO sessions VALUES (?, ?, ?)", (token_hash(token), user_id, time.time()))
-        return f"{COOKIE}={token}; Path=/; HttpOnly; SameSite=Lax; Max-Age={SESSION_DAYS * 86400}"
-
     def api(self, method, path):
         try:
-            # Same-origin guard for state-changing requests (blocks other sites posting with your cookie).
+            # Same-origin guard for state-changing requests (stops other websites you visit from editing your data).
             if method != "GET":
                 origin = self.headers.get("Origin")
                 if origin and urlparse(origin).netloc != self.headers.get("Host"):
@@ -186,56 +157,16 @@ def me_payload(user):
     with db() as c:
         tb = c.execute("SELECT tools, custom FROM toolbox WHERE user_id = ?", (user["id"],)).fetchone()
     return {
-        "user": {"username": user["username"]},
         "toolbox": {"tools": json.loads(tb["tools"]), "custom": json.loads(tb["custom"]), "set": True} if tb else {"tools": [], "custom": [], "set": False},
     }
 
 
 def r_me(h, _):
-    h.send_json(200, me_payload(h.require_user()))
-
-
-def r_signup(h, _):
-    b = h.body()
-    username, password = str(b.get("username", "")).strip(), str(b.get("password", ""))
-    if not USERNAME_RE.match(username):
-        raise ApiError(400, "Usernames are 3–32 letters, numbers, dots, dashes or underscores.")
-    if len(password) < 8:
-        raise ApiError(400, "Use a password of at least 8 characters.")
-    salt = secrets.token_bytes(16)
-    try:
-        with _db_lock, db() as c:
-            cur = c.execute("INSERT INTO users (username, salt, pw_hash, created) VALUES (?, ?, ?, ?)",
-                            (username, salt, hash_pw(password, salt), time.time()))
-            uid = cur.lastrowid
-    except sqlite3.IntegrityError:
-        raise ApiError(409, "That username is taken.")
-    user = {"id": uid, "username": username}
-    h.send_json(200, me_payload(user), set_cookie=h.new_session_cookie(uid))
-
-
-def r_login(h, _):
-    b = h.body()
-    username, password = str(b.get("username", "")).strip(), str(b.get("password", ""))
-    with db() as c:
-        row = c.execute("SELECT * FROM users WHERE username = ?", (username,)).fetchone()
-    if not row or not hmac.compare_digest(row["pw_hash"], hash_pw(password, row["salt"])):
-        time.sleep(0.5)
-        raise ApiError(401, "Wrong username or password.")
-    user = {"id": row["id"], "username": row["username"]}
-    h.send_json(200, me_payload(user), set_cookie=h.new_session_cookie(row["id"]))
-
-
-def r_logout(h, _):
-    jar = cookies.SimpleCookie(h.headers.get("Cookie", ""))
-    if COOKIE in jar:
-        with db() as c:
-            c.execute("DELETE FROM sessions WHERE token_hash = ?", (token_hash(jar[COOKIE].value),))
-    h.send_json(200, {"ok": True}, set_cookie=f"{COOKIE}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0")
+    h.send_json(200, me_payload(LOCAL_USER))
 
 
 def r_toolbox(h, _):
-    u = h.require_user()
+    u = LOCAL_USER
     b = h.body()
     tools = [str(t)[:64] for t in b.get("tools", []) if isinstance(t, str)][:200]
     custom = [str(t).strip()[:120] for t in b.get("custom", []) if str(t).strip()][:200]
@@ -246,14 +177,14 @@ def r_toolbox(h, _):
 
 
 def r_instruments(h, _):
-    u = h.require_user()
+    u = LOCAL_USER
     with db() as c:
         rows = c.execute("SELECT data FROM instruments WHERE user_id = ? ORDER BY updated DESC", (u["id"],)).fetchall()
     h.send_json(200, [json.loads(r["data"]) for r in rows])
 
 
 def r_put_instrument(h, path):
-    u = h.require_user()
+    u = LOCAL_USER
     iid = path.rsplit("/", 1)[1]
     b = h.body()
     if not re.match(r"^[A-Za-z0-9_-]{4,40}$", iid) or b.get("id") != iid or b.get("type") not in ("electric", "acoustic", "bass") or not isinstance(b.get("spec"), dict):
@@ -265,7 +196,7 @@ def r_put_instrument(h, path):
 
 
 def r_delete_instrument(h, path):
-    u = h.require_user()
+    u = LOCAL_USER
     with db() as c:
         c.execute("DELETE FROM instruments WHERE user_id = ? AND id = ?", (u["id"], path.rsplit("/", 1)[1]))
     h.send_json(200, {"ok": True})
@@ -281,7 +212,6 @@ def model_key(type_, make, model):
 
 
 def r_models(h, _):
-    h.require_user()
     with db() as c:
         rows = c.execute("SELECT m.data, m.updated, u.username FROM models m LEFT JOIN users u ON u.id = m.saved_by "
                          "ORDER BY m.updated DESC").fetchall()
@@ -290,7 +220,7 @@ def r_models(h, _):
 
 def r_put_model(h, _):
     """Save checked specs into the shared library (one entry per type + make + model, latest wins)."""
-    u = h.require_user()
+    u = LOCAL_USER
     b = h.body()
     type_, make, model = b.get("type"), str(b.get("make", "")).strip()[:60], str(b.get("model", "")).strip()[:80]
     spec = b.get("spec")
@@ -309,9 +239,6 @@ def r_put_model(h, _):
 
 ROUTES = {
     ("GET", "/api/me"): r_me,
-    ("POST", "/api/signup"): r_signup,
-    ("POST", "/api/login"): r_login,
-    ("POST", "/api/logout"): r_logout,
     ("PUT", "/api/toolbox"): r_toolbox,
     ("GET", "/api/instruments"): r_instruments,
     ("PUT", "/api/instruments/:id"): r_put_instrument,

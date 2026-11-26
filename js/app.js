@@ -3,7 +3,7 @@ import { buildGuide, esc } from './guide.js';
 import { TOOL_CATALOG, TOOL_LABEL } from './tools.js';
 
 const app = document.getElementById('app');
-const LEGACY_KEY = 'setupbench.instruments.v1'; // pre-account local storage, imported once after sign-in
+const LEGACY_KEY = 'setupbench.instruments.v1'; // first version's browser storage, imported once
 
 // ---------- API ----------
 async function api(method, path, body) {
@@ -127,7 +127,7 @@ const TOP_KEYS = ['make', 'model', 'nickname'];
 function h(html) { app.innerHTML = html; window.scrollTo(0, 0); }
 
 function topbar({ back, title, actions } = {}) {
-  const right = actions ?? (state.me ? `<a class="btn small ghost" href="#/tools">${TOOLBOX_ICON}<span class="hide-narrow">My toolbox</span></a><button class="btn small ghost" data-logout>Sign out</button>` : '');
+  const right = actions ?? (state.me ? `<a class="btn small ghost" href="#/tools">${TOOLBOX_ICON}<span class="hide-narrow">My toolbox</span></a>` : '');
   return `<header class="topbar">
     <div class="topbar-inner">
       ${back ? `<a class="btn ghost back" href="${back}" aria-label="Back"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7"/></svg><span>Back</span></a>` : `<a class="brand" href="#/"><span class="brand-mark">${ICONS.electric}</span> Setup Bench</a>`}
@@ -136,43 +136,6 @@ function topbar({ back, title, actions } = {}) {
     </div>
   </header>`;
 }
-document.addEventListener('click', async e => {
-  if (!e.target.closest('[data-logout]')) return;
-  await api('POST', '/api/logout').catch(() => {});
-  state.me = null; state.instruments = []; state.loaded = false;
-  go('#/login');
-});
-
-// ---------- views: auth ----------
-function viewAuth(mode = 'login') {
-  const signup = mode === 'signup';
-  h(`${topbar({ actions: '' })}
-  <main class="wrap narrow auth">
-    <h1>${signup ? 'Create your account' : 'Sign in'}</h1>
-    <p class="lede">${signup ? 'Your instruments, setup logs and toolbox are saved to your account on this Setup Bench server, so they follow you between devices.' : 'Welcome back to the bench.'}</p>
-    <form id="auth-form" class="card-form">
-      <div class="field"><label for="u">Username</label><input id="u" type="text" autocomplete="username" autocapitalize="none" spellcheck="false" required></div>
-      <div class="field"><label for="p">Password</label><input id="p" type="password" autocomplete="${signup ? 'new-password' : 'current-password'}" required>${signup ? '<p class="help">At least 8 characters.</p>' : ''}</div>
-      <p class="form-error" id="err" hidden></p>
-      <button class="btn primary large block" type="submit">${signup ? 'Create account' : 'Sign in'}</button>
-    </form>
-    <p class="switch">${signup ? 'Already have an account? <a href="#/login">Sign in</a>' : 'New here? <a href="#/signup">Create an account</a>'}</p>
-  </main>`);
-  document.getElementById('auth-form').onsubmit = async e => {
-    e.preventDefault();
-    const err = document.getElementById('err');
-    const btn = e.target.querySelector('button'); btn.disabled = true;
-    try {
-      state.me = await api('POST', signup ? '/api/signup' : '/api/login', { username: document.getElementById('u').value, password: document.getElementById('p').value });
-      await loadInstruments();
-      await importLegacy();
-      go(signup ? '#/tools?welcome' : '#/');
-    } catch (ex) {
-      err.textContent = ex.message; err.hidden = false; btn.disabled = false;
-    }
-  };
-}
-
 // Model library: the starter set shipped with the app, plus specs saved on this server (which win on a match).
 const libKey = m => `${m.type}:${`${m.make} ${m.model}`.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()}`;
 async function loadLibrary() {
@@ -201,14 +164,14 @@ async function loadInstruments() {
   state.loaded = true;
 }
 
-// Move instruments saved by the earlier, account-less version into the account.
+// Move instruments the very first version saved in this browser onto the server.
 async function importLegacy() {
   let list = [];
   try { list = JSON.parse(localStorage.getItem(LEGACY_KEY)) || []; } catch { return; }
   const fresh = list.filter(i => i && i.id && i.type && i.spec && !findInst(i.id));
   for (const inst of fresh) await saveInst(inst);
   try { localStorage.removeItem(LEGACY_KEY); } catch { /* ignore */ }
-  if (fresh.length) toast(`Moved ${fresh.length} instrument${fresh.length === 1 ? '' : 's'} from this device into your account.`);
+  if (fresh.length) toast(`Moved ${fresh.length} instrument${fresh.length === 1 ? '' : 's'} saved on this device onto the server.`);
 }
 
 // ---------- views: home ----------
@@ -244,7 +207,6 @@ function viewHome() {
         </a>`).join('')}
     </div>
     ${list.length ? `<section class="saved-section"><h2>Your instruments</h2><ul class="saved-list">${cards}</ul></section>` : ''}
-    <p class="muted small-text signed-in">Signed in as <strong>${esc(state.me.user.username)}</strong>.</p>
   </main>`);
 }
 
@@ -667,15 +629,13 @@ async function route() {
   const [path, query] = raw.split('?');
   const [a, b] = path.split('/');
 
-  if (a === 'login' || a === 'signup') return viewAuth(a);
   if (!state.me) {
     try { state.me = await api('GET', '/api/me'); }
     catch (e) {
-      if (e.status === 401) return go('#/login');
       return h(`${topbar({ actions: '' })}<main class="wrap narrow"><h1>Can't reach the server</h1><p class="lede">${esc(e.message)}. Make sure <code>server.py</code> is running on your computer, then reload.</p></main>`);
     }
   }
-  if (!state.loaded) await loadInstruments();
+  if (!state.loaded) { await loadInstruments(); await importLegacy(); }
   if (a === 'tools') return viewTools(query === 'welcome');
   if (a === 'new' && b) return viewModel(b);
   if (a === 'specs') return viewSpecs();
