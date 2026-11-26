@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
 """Setup Bench server: serves the app and a small JSON API (accounts, toolbox, instruments, model library).
 
-Usage:  python3 server.py            (port 8000)
-        python3 server.py 8080       (another port)
+Usage:  python3 server.py                     http://setupbench.local:8000
+        python3 server.py 80                  http://setupbench.local  (no port in the address)
+        python3 server.py --name guitars      http://guitars.local:8000
+        python3 server.py --no-name           don't announce a .local name
 
 Data lives in setupbench.db next to this file. Needs only the Python standard library.
 """
@@ -21,6 +23,8 @@ import time
 from http import cookies
 from pathlib import Path
 from urllib.parse import urlparse
+
+import mdns
 
 ROOT = Path(__file__).resolve().parent
 DB_PATH = Path(os.environ.get("SETUPBENCH_DB", ROOT / "setupbench.db"))
@@ -328,13 +332,46 @@ def lan_ip():
         s.close()
 
 
+def parse_args(argv):
+    port, name = 8000, "setupbench"
+    args = list(argv)
+    while args:
+        a = args.pop(0)
+        if a == "--name" and args:
+            name = args.pop(0)
+        elif a == "--no-name":
+            name = None
+        elif a.isdigit():
+            port = int(a)
+        else:
+            sys.exit(f"Unknown option: {a}\n{__doc__}")
+    if name and not re.match(r"^[A-Za-z0-9-]{1,63}$", name):
+        sys.exit("--name takes letters, numbers and dashes only, e.g. --name setupbench")
+    return port, name
+
+
 if __name__ == "__main__":
-    port = int(sys.argv[1]) if len(sys.argv) > 1 else 8000
+    port, name = parse_args(sys.argv[1:])
     init_db()
-    with http.server.ThreadingHTTPServer(("0.0.0.0", port), Handler) as httpd:
+    try:
+        httpd = http.server.ThreadingHTTPServer(("0.0.0.0", port), Handler)
+    except OSError as e:
+        sys.exit(f"Couldn't start on port {port}: {e}\n"
+                 + ("Something else is using port 80 — try the default: py server.py" if port == 80 else "Try another port, e.g. py server.py 8080"))
+    ip = lan_ip()
+    suffix = "" if port == 80 else f":{port}"
+    alias_note = None
+    if name:
+        err = mdns.Responder(name, ip).start()
+        alias_note = f"http://{name.lower()}.local{suffix}" if not err else f"(couldn't announce {name}.local: {err})"
+    with httpd:
         print("Setup Bench is running.")
-        print(f"  On this computer:  http://localhost:{port}")
-        print(f"  On your iPad:      http://{lan_ip()}:{port}   (same Wi-Fi)")
+        if alias_note:
+            print(f"  On your iPad:      {alias_note}")
+            print(f"  Or by address:     http://{ip}{suffix}")
+        else:
+            print(f"  On your iPad:      http://{ip}{suffix}   (same Wi-Fi)")
+        print(f"  On this computer:  http://localhost{suffix}")
         print("Press Ctrl+C to stop.")
         try:
             httpd.serve_forever()
